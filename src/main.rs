@@ -5,8 +5,8 @@ use rand::Rng;
 use std::time::{Duration, Instant};
 
 const HIGH_SCORE_FILE: &str = "high_scores.txt";
-const GRID_WIDTH: usize = 10;
-const GRID_HEIGHT: usize = 20;
+const GRID_WIDTH: usize = 99;
+const GRID_HEIGHT: usize = 19;
 
 struct CrowsTetris {
     state: GameState,
@@ -90,7 +90,7 @@ impl Default for CrowsTetris {
             grid: [[0; GRID_WIDTH]; GRID_HEIGHT],
             active_block: None,
             last_update: Instant::now(),
-            drop_speed: Duration::from_millis(500), // Default speed (medium)
+            drop_speed: Duration::from_millis(250),
             selected_difficulty: None,
         }
     }
@@ -218,30 +218,31 @@ impl CrowsTetris {
 
     /// Renders the grid and active block
     fn render_grid(&self, ui: &mut egui::Ui) {
-        for row in &self.grid {
-            let row_str: String = row.iter().map(|&cell| if cell == 1 { "■" } else { "." }).collect();
+        let mut grid_with_block = self.grid.clone();
+
+        if let Some(block) = &self.active_block {
+            for (dy, row) in block.shape.iter().enumerate() {
+                for (dx, &cell) in row.iter().enumerate() {
+                    if cell == 1 {
+                        let x = block.position.0 + dx as i32;
+                        let y = block.position.1 + dy as i32;
+                        if x >= 0 && x < GRID_WIDTH as i32 && y >= 0 && y < GRID_HEIGHT as i32 {
+                            grid_with_block[y as usize][x as usize] = 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        for row in &grid_with_block {
+            let row_str: String = row.iter().map(|&cell| if cell == 1 { "■" } else { " " }).collect();
             ui.label(row_str);
         }
+
         if let Some(block) = &self.active_block {
             ui.label(format!("Active Block at {:?}", block.position));
         }
     }
-
-    // Handles gameplay rendering and block movement
-    // fn render_gameplay(&mut self, ctx: &egui::Context) {
-    //     egui::CentralPanel::default().show(ctx, |ui| {
-    //         ui.label(format!("Score: {}", self.score));
-    //         if self.is_paused {
-    //             ui.label("Game Paused");
-    //             return;
-    //         }
-    //         if self.last_update.elapsed() >= self.drop_speed {
-    //             self.last_update = Instant::now();
-    //             self.move_block_down();
-    //         }
-    //         self.render_grid(ui);
-    //     });
-    // }
 }
 
 impl eframe::App for CrowsTetris {
@@ -282,68 +283,72 @@ impl CrowsTetris {
     }
 
     fn render_gameplay(&mut self, ctx: &egui::Context) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // Display score at the top
-            let score_label = egui::RichText::new(format!("Score: {}", self.score))
-                .size(21.0)
-                .strong();
-            ui.vertical_centered(|ui| ui.label(score_label));
+        egui::CentralPanel::default()
+            .frame(egui::Frame::default().fill(egui::Color32::DARK_RED))
+            .show(ctx, |ui| {
+                // Display score at the top
+                let score_label = egui::RichText::new(format!("Score: {}", self.score))
+                    .size(21.0)
+                    .strong();
+                ui.vertical_centered(|ui| ui.label(score_label));
 
-            ui.add_space(10.0);
+                ui.add_space(10.0);
 
-            // Pause functionality
-            if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
-                self.is_paused = !self.is_paused;
-            }
+                // Pause functionality
+                if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
+                    self.is_paused = !self.is_paused;
+                }
 
-            if self.last_update.elapsed() >= self.drop_speed {
-                self.last_update = Instant::now();
-                self.move_block_down();
-            }
+                if self.last_update.elapsed() >= self.drop_speed {
+                    self.last_update = Instant::now();
+                    self.move_block_down();
+                }
 
-            if self.is_paused {
-                ui.vertical_centered(|ui| {
-                    ui.label("Game Paused");
+                if self.is_paused {
+                    ui.vertical_centered(|ui| {
+                        ui.label("Game Paused");
+                    });
+
+                    return;
+                }
+
+                // Center the grid on the screen
+                ui.horizontal_centered(|ui| {
+                    ui.vertical_centered(|ui| {
+                        self.render_grid(ui);
+                    });
                 });
 
-                return;
-            }
+                // Handle movement (left, right, rotate)
+                if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
+                    ui.label("Moved Left");
+                }
+                if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
+                    ui.label("Moved Right");
+                }
+                if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                    ui.label("Rotated");
+                }
+                if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
+                    ui.label("Moved Down");
+                }
 
-            // Example gameplay mechanics (placeholder for actual Tetris logic)
-            ui.label("Gameplay goes here...");
-
-            // Handle movement (left, right, rotate)
-            if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
-                ui.label("Moved Left");
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
-                ui.label("Moved Right");
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
-                ui.label("Rotated");
-            }
-            if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
-                ui.label("Moved Down");
-            }
-
-            // If the game is over, transition to GameOver state
-            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-                self.state = GameState::GameOver;
-            }
-        });
+                // If the game is over, transition to GameOver state
+                if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    self.state = GameState::GameOver;
+                }
+            });
     }
 
     fn render_game_over(&mut self, ctx: &egui::Context) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("Game Over!");
+                ui.add_space(140.0);
+                ui.label("Enter Name:");
+                ui.text_edit_singleline(&mut self.new_high_score_name);
 
-                // Input for entering a high score name if applicable
-                ui.horizontal(|ui| {
-                    ui.label("Enter Name:");
-                    ui.text_edit_singleline(&mut self.new_high_score_name);
-                });
-
+                ui.add_space(33.0);
                 if ui.button("Submit Score").clicked() && !self.new_high_score_name.is_empty() {
                     self.high_scores.push((self.new_high_score_name.clone(), self.score));
                     self.high_scores
@@ -354,6 +359,7 @@ impl CrowsTetris {
                     self.state = GameState::StartScreen;
                 }
 
+                ui.add_space(33.0);
                 if ui.button("Back to Start").clicked() {
                     self.state = GameState::StartScreen;
                 }
@@ -364,6 +370,18 @@ impl CrowsTetris {
 
 fn main() {
     let app = CrowsTetris::default();
-    let options = eframe::NativeOptions::default();
+    // Compute window size.
+    let ctx = egui::Context::default();
+    let _ = ctx.run(egui::RawInput::default(), |_| {});
+    // app.render(&ctx);
+    let size = ctx.used_size();
+
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_resizable(false)
+            .with_inner_size(size),
+        ..Default::default()
+    };
+
     let _ = eframe::run_native("Crow's Tetris", options, Box::new( |_cc| Ok(Box::new(app)) ));
 }
