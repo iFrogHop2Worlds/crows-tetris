@@ -5,8 +5,8 @@ use rand::Rng;
 use std::time::{Duration, Instant};
 
 const HIGH_SCORE_FILE: &str = "high_scores.txt";
-const GRID_WIDTH: usize = 99;
-const GRID_HEIGHT: usize = 19;
+const GRID_WIDTH: usize = 100;
+const GRID_HEIGHT: usize = 32;
 
 struct CrowsTetris {
     state: GameState,
@@ -90,7 +90,7 @@ impl Default for CrowsTetris {
             grid: [[0; GRID_WIDTH]; GRID_HEIGHT],
             active_block: None,
             last_update: Instant::now(),
-            drop_speed: Duration::from_millis(250),
+            drop_speed: Duration::from_millis(125),
             selected_difficulty: None,
         }
     }
@@ -177,6 +177,9 @@ impl CrowsTetris {
         }
         false
     }
+    // pub fn check_collision_with_position(&self, position: (i32, i32)) -> bool {
+    //     position.0 < 0 || position.1 < 0
+    // }
 
     /// Locks the active block into the grid
     fn lock_block(&mut self) {
@@ -319,13 +322,47 @@ impl CrowsTetris {
                     });
                 });
 
-                // Handle movement (left, right, rotate)
+                
+                // Move Left
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
-                    ui.label("Moved Left");
+                    let new_position = self.active_block.as_ref()
+                        .map(|block| (block.position.0 - 1, block.position.1))
+                        .unwrap_or((0, 0));
+
+                    // Check collision before mutably borrowing `self`
+                    let has_collision = self.check_collision_with_position(new_position);
+
+                    if !has_collision {
+                        if let Some(block) = self.active_block.as_mut() {
+                            if block.position.0 > 0 {
+                                block.position.0 -= 1;
+                                ui.label("Moved Left");
+                            }
+                        }
+                    }
                 }
+
+                // Move Right
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
-                    ui.label("Moved Right");
+                    let new_position = self.active_block.as_ref()
+                        .map(|block| (block.position.0 + 1, block.position.1))
+                        .unwrap_or((0, 0));
+
+                    // Check collision before mutably borrowing `self`
+                    let has_collision = self.check_collision_with_position(new_position);
+
+                    if !has_collision {
+                        if let Some(block) = self.active_block.as_mut() {
+                            if block.position.0 + block.shape[0].len() as i32 <= GRID_WIDTH as i32 {
+                                block.position.0 += 1;
+                                ui.label("Moved Right");
+                            }
+                        }
+                    }
                 }
+
+
+                // Other controls
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
                     ui.label("Rotated");
                 }
@@ -338,6 +375,34 @@ impl CrowsTetris {
                     self.state = GameState::GameOver;
                 }
             });
+    }
+
+    fn check_collision_with_position(&self, block_position: (i32, i32)) -> bool {
+        let (x, y) = block_position;
+
+        // Iterate through the block's shape to check for collisions
+        if let Some(block) = &self.active_block {
+            for (dy, row) in block.shape.iter().enumerate() {
+                for (dx, cell) in row.iter().enumerate() {
+                    if *cell != 0 {
+                        let grid_x = x + dx as i32;
+                        let grid_y = y + dy as i32;
+
+                        // Check boundaries
+                        if grid_x < 0 || grid_x >= GRID_WIDTH as i32 || grid_y >= GRID_HEIGHT as i32 {
+                            return true; // Collision with boundary
+                        }
+
+                        // Check collision with filled cells in the grid
+                        if self.grid[grid_y as usize][grid_x as usize] != 0 {
+                            return true; // Collision with another block
+                        }
+                    }
+                }
+            }
+        }
+
+        false // No collision
     }
 
     fn render_game_over(&mut self, ctx: &egui::Context) {
@@ -366,19 +431,42 @@ impl CrowsTetris {
             });
         });
     }
+    // fn check_collision_with_position(&self, block_position: (i32, i32), block_shape: &Vec<Vec<u8>>) -> bool {
+    //     let (x, y) = block_position;
+    //
+    //     // Iterate through the block's shape to check for collisions
+    //     for (dy, row) in block_shape.iter().enumerate() {
+    //         for (dx, cell) in row.iter().enumerate() {
+    //             if *cell != 0 {
+    //                 let grid_x = x + dx as i32;
+    //                 let grid_y = y + dy as i32;
+    //
+    //                 // Check boundaries
+    //                 if grid_x < 0 || grid_x >= GRID_WIDTH as i32 || grid_y >= GRID_HEIGHT as i32 {
+    //                     return true; // Collision with boundary
+    //                 }
+    //
+    //                 // Check collision with filled cells in the grid
+    //                 if self.game_grid[grid_y as usize][grid_x as usize] != 0 {
+    //                     return true; // Collision with another block
+    //                 }
+    //             }
+    //         }
+    //     }
+    //
+    //     false // No collision
+    // }
 }
 
 fn main() {
     let app = CrowsTetris::default();
-    // Compute window size.
     let ctx = egui::Context::default();
-    let _ = ctx.run(egui::RawInput::default(), |_| {});
-    // app.render(&ctx);
-    let size = ctx.used_size();
-
+    let mut size = ctx.used_size();
+    size.x = 420.00;
+    size.y = 690.00;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_resizable(false)
+            .with_resizable(true)
             .with_inner_size(size),
         ..Default::default()
     };
