@@ -51,11 +51,11 @@ fn load_high_scores() -> Vec<(String, i32)> {
         io::BufReader::new(file)
             .lines()
             .filter_map(|line| {
-                let line = line.ok()?; // Read the line
+                let line = line.ok()?;
                 let parts: Vec<&str> = line.split(',').collect();
                 if parts.len() == 2 {
-                    let name = parts[0].to_string(); // Convert to String
-                    if let Ok(score) = parts[1].parse::<i32>() { // Parse score
+                    let name = parts[0].to_string();
+                    if let Ok(score) = parts[1].parse::<i32>() {
                         return Some((name, score));
                     }
                 }
@@ -177,9 +177,6 @@ impl CrowsTetris {
         }
         false
     }
-    // pub fn check_collision_with_position(&self, position: (i32, i32)) -> bool {
-    //     position.0 < 0 || position.1 < 0
-    // }
 
     /// Locks the active block into the grid
     fn lock_block(&mut self) {
@@ -204,11 +201,11 @@ impl CrowsTetris {
         let mut new_row = GRID_HEIGHT - 1;
         for y in (0..GRID_HEIGHT).rev() {
             if self.grid[y].iter().all(|&cell| cell == 1) {
-                self.score += 100; // Increase score for each cleared line
+                self.score += 100;
                 continue;
             }
             new_grid[new_row] = self.grid[y];
-            // Gaurds underflow
+            // Guards underflow
             if 1 > new_row {
                 return
             } else {
@@ -236,9 +233,10 @@ impl CrowsTetris {
                 }
             }
         }
-
+        //use block.position to update shape position.
         for row in &grid_with_block {
             let row_str: String = row.iter().map(|&cell| if cell == 1 { "■" } else { " " }).collect();
+            println!("{}", row_str);
             ui.label(row_str);
         }
 
@@ -289,7 +287,6 @@ impl CrowsTetris {
         egui::CentralPanel::default()
             .frame(egui::Frame::default().fill(egui::Color32::DARK_RED))
             .show(ctx, |ui| {
-                // Display score at the top
                 let score_label = egui::RichText::new(format!("Score: {}", self.score))
                     .size(21.0)
                     .strong();
@@ -297,7 +294,6 @@ impl CrowsTetris {
 
                 ui.add_space(10.0);
 
-                // Pause functionality
                 if ctx.input(|i| i.key_pressed(egui::Key::Space)) {
                     self.is_paused = !self.is_paused;
                 }
@@ -315,21 +311,17 @@ impl CrowsTetris {
                     return;
                 }
 
-                // Center the grid on the screen
                 ui.horizontal_centered(|ui| {
                     ui.vertical_centered(|ui| {
                         self.render_grid(ui);
                     });
                 });
 
-                
-                // Move Left
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
-                    let new_position = self.active_block.as_ref()
+                    let new_position = self.active_block.as_mut()
                         .map(|block| (block.position.0 - 1, block.position.1))
                         .unwrap_or((0, 0));
 
-                    // Check collision before mutably borrowing `self`
                     let has_collision = self.check_collision_with_position(new_position);
 
                     if !has_collision {
@@ -342,13 +334,11 @@ impl CrowsTetris {
                     }
                 }
 
-                // Move Right
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
-                    let new_position = self.active_block.as_ref()
+                    let new_position = self.active_block.as_mut()
                         .map(|block| (block.position.0 + 1, block.position.1))
                         .unwrap_or((0, 0));
 
-                    // Check collision before mutably borrowing `self`
                     let has_collision = self.check_collision_with_position(new_position);
 
                     if !has_collision {
@@ -361,8 +351,6 @@ impl CrowsTetris {
                     }
                 }
 
-
-                // Other controls
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
                     ui.label("Rotated");
                 }
@@ -370,7 +358,6 @@ impl CrowsTetris {
                     ui.label("Moved Down");
                 }
 
-                // If the game is over, transition to GameOver state
                 if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                     self.state = GameState::GameOver;
                 }
@@ -390,19 +377,19 @@ impl CrowsTetris {
 
                         // Check boundaries
                         if grid_x < 0 || grid_x >= GRID_WIDTH as i32 || grid_y >= GRID_HEIGHT as i32 {
-                            return true; // Collision with boundary
+                            return true;
                         }
 
-                        // Check collision with filled cells in the grid
+                        // Check if grid cell filled
                         if self.grid[grid_y as usize][grid_x as usize] != 0 {
-                            return true; // Collision with another block
+                            return true;
                         }
                     }
                 }
             }
         }
 
-        false // No collision
+        false
     }
 
     fn render_game_over(&mut self, ctx: &egui::Context) {
@@ -431,31 +418,6 @@ impl CrowsTetris {
             });
         });
     }
-    // fn check_collision_with_position(&self, block_position: (i32, i32), block_shape: &Vec<Vec<u8>>) -> bool {
-    //     let (x, y) = block_position;
-    //
-    //     // Iterate through the block's shape to check for collisions
-    //     for (dy, row) in block_shape.iter().enumerate() {
-    //         for (dx, cell) in row.iter().enumerate() {
-    //             if *cell != 0 {
-    //                 let grid_x = x + dx as i32;
-    //                 let grid_y = y + dy as i32;
-    //
-    //                 // Check boundaries
-    //                 if grid_x < 0 || grid_x >= GRID_WIDTH as i32 || grid_y >= GRID_HEIGHT as i32 {
-    //                     return true; // Collision with boundary
-    //                 }
-    //
-    //                 // Check collision with filled cells in the grid
-    //                 if self.game_grid[grid_y as usize][grid_x as usize] != 0 {
-    //                     return true; // Collision with another block
-    //                 }
-    //             }
-    //         }
-    //     }
-    //
-    //     false // No collision
-    // }
 }
 
 fn main() {
