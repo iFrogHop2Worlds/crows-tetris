@@ -5,8 +5,8 @@ use rand::Rng;
 use std::time::{Duration, Instant};
 
 const HIGH_SCORE_FILE: &str = "high_scores.txt";
-const GRID_WIDTH: usize = 100;
-const GRID_HEIGHT: usize = 32;
+const GRID_WIDTH: usize = 40;
+const GRID_HEIGHT: usize = 21;
 
 struct CrowsTetris {
     state: GameState,
@@ -42,8 +42,8 @@ enum BlockType {
 #[derive(Debug, Clone)]
 struct Block {
     block_type: BlockType,
-    position: (i32, i32),      // (x, y): Coordinates on the grid
-    shape: Vec<Vec<u8>>,      // 2D shape of the block (1 for filled, 0 for empty)
+    position: (i32, i32),
+    shape: Vec<Vec<u8>>,
 }
 
 fn load_high_scores() -> Vec<(String, i32)> {
@@ -97,7 +97,6 @@ impl Default for CrowsTetris {
 }
 
 impl CrowsTetris {
-    /// Resets the game and initializes a new grid and starting block
     fn reset_game(&mut self) {
         self.state = GameState::Playing;
         self.score = 0;
@@ -106,9 +105,8 @@ impl CrowsTetris {
         self.active_block = Some(self.generate_random_block());
     }
 
-    /// Generates a random Tetris block with a shape
     fn generate_random_block(&self) -> Block {
-        let block_type = match rand::thread_rng().gen_range(0..7) {
+        let block_type = match rand::rng().random_range(0..7) {
             0 => BlockType::I,
             1 => BlockType::O,
             2 => BlockType::T,
@@ -117,6 +115,7 @@ impl CrowsTetris {
             5 => BlockType::J,
             _ => BlockType::L,
         };
+
         let shape = match block_type {
             BlockType::I => vec![vec![1, 1, 1, 1]],
             BlockType::O => vec![vec![1, 1], vec![1, 1]],
@@ -126,59 +125,63 @@ impl CrowsTetris {
             BlockType::J => vec![vec![1, 0, 0], vec![1, 1, 1]],
             BlockType::L => vec![vec![0, 0, 1], vec![1, 1, 1]],
         };
+
         Block {
             block_type,
-            position: (GRID_WIDTH as i32 / 2 - 1, 0), // Starts at the top center
+            position: (GRID_WIDTH as i32 / 2 - shape[0].len() as i32 / 2, 0), // Starts at the top center
             shape,
         }
+
     }
 
     fn move_block_down(&mut self) {
-        // Step 1: Manage mutable borrow
-        let mut collided = false; // Flag for collision detection
-        if let Some(block) = self.active_block.as_mut() {
-            block.position.1 += 1; // Move the block down
-            collided = self.check_collision(); // Flag collision after move
-        }
+        if let Some(block) = self.active_block.as_ref() {
+            let position = block.position;
+            let collided = self.check_collision_with_position(position);
 
-        // Step 2: After mutable borrow ends, handle collision logic
-        if collided {
-            if let Some(block) = self.active_block.as_mut() {
-                block.position.1 -= 1; // Revert the move
-            }
-            self.lock_block(); // Lock block in place
-            self.clear_lines(); // Clear any completed lines
-            self.active_block = Some(self.generate_random_block());
+            if !collided {
+                let mut blck = self.active_block.as_mut().unwrap();
+                blck.position.1 += 1;
+            } else {
+                self.lock_block();  
+                self.clear_lines();
+                self.active_block = Some(self.generate_random_block());
 
-            // Check for a game over condition after spawning a new block
-            if self.check_collision() {
-                self.state = GameState::GameOver;
+                let new_block = self.generate_random_block();
+                if self.check_collision_with_position(new_block.position) {
+                    self.state = GameState::GameOver;
+                } else {
+                    self.active_block = Some(new_block);
+                }
             }
         }
     }
 
-    /// Checks if the active block collides with the grid or boundaries
-    fn check_collision(&self) -> bool {
+    fn check_collision_with_position(&self, position: (i32, i32)) -> bool {
+        let (x, y) = position;
+
         if let Some(block) = &self.active_block {
             for (dy, row) in block.shape.iter().enumerate() {
-                for (dx, &cell) in row.iter().enumerate() {
-                    if cell == 1 {
-                        let x = block.position.0 + dx as i32;
-                        let y = block.position.1 + dy as i32;
-                        if x < 0 || x >= GRID_WIDTH as i32 || y >= GRID_HEIGHT as i32 {
-                            return true; // Outside boundaries
+                for (dx, cell) in row.iter().enumerate() {
+                    if *cell != 0 {
+                        let grid_x = x + dx as i32;
+                        let grid_y = y + dy as i32;
+
+                        if grid_x < 0 || grid_x >= (GRID_WIDTH as i32) - 1 || grid_y >= (GRID_HEIGHT as i32) - 1 {
+                            return true;
                         }
-                        if y >= 0 && self.grid[y as usize][x as usize] == 1 {
-                            return true; // Collides with existing block
+
+                        if self.grid[grid_y as usize][grid_x as usize] != 0 {
+                            return true;
                         }
                     }
                 }
             }
         }
+
         false
     }
 
-    /// Locks the active block into the grid
     fn lock_block(&mut self) {
         if let Some(block) = &self.active_block {
             for (dy, row) in block.shape.iter().enumerate() {
@@ -186,8 +189,8 @@ impl CrowsTetris {
                     if cell == 1 {
                         let x = block.position.0 + dx as i32;
                         let y = block.position.1 + dy as i32;
-                        if y >= 0 {
-                            self.grid[y as usize][x as usize] = 1;
+                        if y >= 0 && x >= 0 && x < GRID_WIDTH as i32 && y < GRID_HEIGHT as i32 {
+                            self.grid[y as usize][x as usize] = cell;
                         }
                     }
                 }
@@ -195,28 +198,25 @@ impl CrowsTetris {
         }
     }
 
-    /// Clears completed lines and updates the score
     fn clear_lines(&mut self) {
         let mut new_grid = [[0; GRID_WIDTH]; GRID_HEIGHT];
         let mut new_row = GRID_HEIGHT - 1;
-        for y in (0..GRID_HEIGHT).rev() {
-            if self.grid[y].iter().all(|&cell| cell == 1) {
-                self.score += 100;
-                continue;
-            }
-            new_grid[new_row] = self.grid[y];
-            // Guards underflow
-            if 1 > new_row {
-                return
-            } else {
-                new_row -= 1;
-            }
 
+        for y in (0..GRID_HEIGHT).rev() {
+            // Copy non-full rows downward
+            if !self.grid[y].iter().all(|&cell| cell == 1) {
+                new_grid[new_row] = self.grid[y];
+                if new_row > 0 {
+                    new_row -= 1;
+                }
+            } else {
+                self.score += 100;
+            }
         }
+
         self.grid = new_grid;
     }
 
-    /// Renders the grid and active block
     fn render_grid(&self, ui: &mut egui::Ui) {
         let mut grid_with_block = self.grid.clone();
 
@@ -233,15 +233,29 @@ impl CrowsTetris {
                 }
             }
         }
-        //use block.position to update shape position.
         for row in &grid_with_block {
-            let row_str: String = row.iter().map(|&cell| if cell == 1 { "■" } else { " " }).collect();
-            println!("{}", row_str);
+            let row_str: String = row.iter().map(|&cell| if cell == 1 { "■" } else { "0" }).collect();
+            //println!("{}", row_str);
             ui.label(row_str);
         }
 
         if let Some(block) = &self.active_block {
             ui.label(format!("Active Block at {:?}", block.position));
+        }
+    }
+
+    fn rotate_block(&mut self) {
+        if let Some(block) = self.active_block.as_ref() {
+            let original_shape = block.shape.clone();
+            let rotated_shape: Vec<Vec<u8>> = (0..block.shape[0].len())
+                .map(|i| block.shape.iter().rev().map(|row| row[i]).collect())
+                .collect();
+
+
+            if !self.check_collision_with_position(block.position) {
+                let mut blck = self.active_block.as_mut().unwrap();
+                blck.shape = rotated_shape;
+            }
         }
     }
 }
@@ -290,7 +304,18 @@ impl CrowsTetris {
                 let score_label = egui::RichText::new(format!("Score: {}", self.score))
                     .size(21.0)
                     .strong();
-                ui.vertical_centered(|ui| ui.label(score_label));
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                    ui.label(score_label);
+                    ui.add_space(20.0);
+                });
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+
+                    ui.add_space(20.0);
+                    ui.label("Level: 0");
+                });
+
+
 
                 ui.add_space(10.0);
 
@@ -298,8 +323,9 @@ impl CrowsTetris {
                     self.is_paused = !self.is_paused;
                 }
 
-                if self.last_update.elapsed() >= self.drop_speed {
-                    self.last_update = Instant::now();
+                let now = Instant::now();
+                if now.duration_since(self.last_update) >= self.drop_speed {
+                    self.last_update = now; // Reset timer at actual execution
                     self.move_block_down();
                 }
 
@@ -311,14 +337,10 @@ impl CrowsTetris {
                     return;
                 }
 
-                ui.horizontal_centered(|ui| {
-                    ui.vertical_centered(|ui| {
-                        self.render_grid(ui);
-                    });
-                });
+                self.render_grid(ui);
 
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowLeft)) {
-                    let new_position = self.active_block.as_mut()
+                    let new_position = self.active_block.as_ref()
                         .map(|block| (block.position.0 - 1, block.position.1))
                         .unwrap_or((0, 0));
 
@@ -326,16 +348,13 @@ impl CrowsTetris {
 
                     if !has_collision {
                         if let Some(block) = self.active_block.as_mut() {
-                            if block.position.0 > 0 {
-                                block.position.0 -= 1;
-                                ui.label("Moved Left");
-                            }
+                            block.position.0 -= 1;
                         }
                     }
                 }
 
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowRight)) {
-                    let new_position = self.active_block.as_mut()
+                    let new_position = self.active_block.as_ref()
                         .map(|block| (block.position.0 + 1, block.position.1))
                         .unwrap_or((0, 0));
 
@@ -343,15 +362,13 @@ impl CrowsTetris {
 
                     if !has_collision {
                         if let Some(block) = self.active_block.as_mut() {
-                            if block.position.0 + block.shape[0].len() as i32 <= GRID_WIDTH as i32 {
-                                block.position.0 += 1;
-                                ui.label("Moved Right");
-                            }
+                            block.position.0 += 1;
                         }
                     }
                 }
 
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowUp)) {
+                    self.rotate_block();
                     ui.label("Rotated");
                 }
                 if ctx.input(|i| i.key_pressed(egui::Key::ArrowDown)) {
@@ -362,34 +379,6 @@ impl CrowsTetris {
                     self.state = GameState::GameOver;
                 }
             });
-    }
-
-    fn check_collision_with_position(&self, block_position: (i32, i32)) -> bool {
-        let (x, y) = block_position;
-
-        // Iterate through the block's shape to check for collisions
-        if let Some(block) = &self.active_block {
-            for (dy, row) in block.shape.iter().enumerate() {
-                for (dx, cell) in row.iter().enumerate() {
-                    if *cell != 0 {
-                        let grid_x = x + dx as i32;
-                        let grid_y = y + dy as i32;
-
-                        // Check boundaries
-                        if grid_x < 0 || grid_x >= GRID_WIDTH as i32 || grid_y >= GRID_HEIGHT as i32 {
-                            return true;
-                        }
-
-                        // Check if grid cell filled
-                        if self.grid[grid_y as usize][grid_x as usize] != 0 {
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
-
-        false
     }
 
     fn render_game_over(&mut self, ctx: &egui::Context) {
@@ -425,10 +414,10 @@ fn main() {
     let ctx = egui::Context::default();
     let mut size = ctx.used_size();
     size.x = 420.00;
-    size.y = 690.00;
+    size.y = 540.00;
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_resizable(true)
+            .with_resizable(false)
             .with_inner_size(size),
         ..Default::default()
     };
